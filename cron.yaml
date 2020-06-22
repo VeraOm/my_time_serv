@@ -1,0 +1,10 @@
+cron:
+- description: "run email forward in the morning"
+  url: /africa/
+  schedule: every day 10:00
+  timezone: Asia/Omsk
+- description: "run email forward in the evening"
+  url: /africa/
+  schedule: every day 17:00
+  timezone: Asia/Omsk
+  
