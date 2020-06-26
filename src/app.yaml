@@ -1,1 +1,8 @@
 runtime: python37
+
+env_variables:
+  FN_BUCKET_RESOURCE: "time_services_resources"
+  FN_WEB_CONFIG_FILE: "cs.json"
+  FN_PROJECT_ID: "quickstart-1574153168977"
+  FN_USER_ROLE_PT: "projects\/.*\/?roles\/MyServicesAccess"
+  UP_LOG_NAME: "my-test-log"

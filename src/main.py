@@ -18,17 +18,25 @@ import email_forward as ef
 from google.cloud import logging
 import functools
 
-# If `entrypoint` is not defined in app.yaml, App Engine will look for an app
-# called `app` in `main.py`.
 app = flask.Flask(__name__)
 
+import os
 import json
 import google.oauth2.credentials
 import googleapiclient.discovery
 
+try:
+  import googleclouddebugger
+  googleclouddebugger.enable()
+except ImportError:
+  pass
+
 import gauth
+
 app.secret_key = "wsxcvb"
 app.register_blueprint(gauth.app, url_prefix="/gauth")
+
+CURRENT_LOG = os.environ.get("UP_LOG_NAME", default=False)
 
 def check_auth(func):
     @functools.wraps(func)
@@ -36,17 +44,15 @@ def check_auth(func):
         if gauth.is_logged_in():
             return flask.make_response(func(*args, **kwargs))
         return "Everything Will Be Ok"
-    return check_auth_impl   # functools.update_wrapper(check_auth_impl, func)
+    return check_auth_impl
         
 
 @app.route('/')
 def hello():
     
     logging_client = logging.Client()
-    log_name = 'my-test-log'
+    log_name = CURRENT_LOG
     logger = logging_client.logger(log_name)
-#    text = 'Test hello log'
-#    logger.log_text(text)
     if gauth.is_logged_in():
         return 'I can help you.'
 
@@ -54,19 +60,14 @@ def hello():
 
 
 @app.route('/africa/')
-@check_auth
 def do_email_forward():
     return ef.main()
     
 
-@app.route('/gauth/username')
-@check_auth
-def login():
-#    if gauth.is_logged_in():
-    user_info = json.dumps(flask.session[gauth.AUTH_PARAMS_KEY], indent=4)
-    return '<div>You are currently logged in as </div><pre>' + user_info + "</pre>"
-
-#    return 'You are not currently logged in.'
+@app.route('/params/')
+def show_info():
+    sResult = str(flask.request.headers)
+    return sResult
 
 
 if __name__ == '__main__':

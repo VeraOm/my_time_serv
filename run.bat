@@ -5,5 +5,6 @@ set FN_BUCKET_RESOURCE=time_services_resources
 set FN_WEB_CONFIG_FILE=cs.json
 set FN_PROJECT_ID=quickstart-1574153168977
 set FN_USER_ROLE_PT=projects\/.*\/?roles\/MyServicesAccess
+set UP_LOG_NAME=my-test-log
 
 python src\main.py

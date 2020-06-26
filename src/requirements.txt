@@ -1,2 +1,7 @@
 Flask==1.1.2
 google-cloud-storage
+google-cloud-logging
+google-auth
+google-api-python-client
+google_auth_oauthlib
+google-python-cloud-debugger==2.14
