@@ -21,15 +21,9 @@ import functools
 app = flask.Flask(__name__)
 
 import os
-import json
-import google.oauth2.credentials
-import googleapiclient.discovery
-
-try:
-  import googleclouddebugger
-  googleclouddebugger.enable()
-except ImportError:
-  pass
+# import json
+# import google.oauth2.credentials
+# import googleapiclient.discovery
 
 import gauth
 
@@ -37,22 +31,32 @@ app.secret_key = "wsxcvb"
 app.register_blueprint(gauth.app, url_prefix="/gauth")
 
 CURRENT_LOG = os.environ.get("UP_LOG_NAME", default=False)
+logr = logging.Client().logger(CURRENT_LOG)
 
 def check_auth(func):
     @functools.wraps(func)
+    
     def check_auth_impl(*args, **kwargs):
         if gauth.is_logged_in():
-            return flask.make_response(func(*args, **kwargs))
-        return "Everything Will Be Ok"
+            sResult =  func(*args, **kwargs)
+        elif gauth.is_cron_request():
+            logr.log_text(func(*args, **kwargs))
+            sResult = "Everything Ok"
+        else:
+            logr.log_text("[" + flask.request.remote_addr + " / " 
+                + flask.request.headers.get("X-Appengine-Cron", default='###').lower() 
+                + "] HEADER -> " + str(flask.request.headers)
+                + " Env -> " + str(flask.request.environ))
+            sResult = "Everything Will Be Ok"
+
+        return flask.make_response(sResult)
+    
     return check_auth_impl
         
 
 @app.route('/')
 def hello():
     
-    logging_client = logging.Client()
-    log_name = CURRENT_LOG
-    logger = logging_client.logger(log_name)
     if gauth.is_logged_in():
         return 'I can help you.'
 
@@ -60,11 +64,11 @@ def hello():
 
 
 @app.route('/africa/')
+@check_auth
 def do_email_forward():
     return ef.main()
     
 
-@app.route('/params/')
 def show_info():
     sResult = str(flask.request.headers)
     return sResult
