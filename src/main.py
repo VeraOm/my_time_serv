@@ -26,9 +26,11 @@ import os
 # import googleapiclient.discovery
 
 import gauth
+import gqueue
 
 app.secret_key = "wsxcvb"
 app.register_blueprint(gauth.app, url_prefix="/gauth")
+app.register_blueprint(gqueue.app, url_prefix="/q")
 
 CURRENT_LOG = os.environ.get("UP_LOG_NAME", default=False)
 logr = logging.Client().logger(CURRENT_LOG)

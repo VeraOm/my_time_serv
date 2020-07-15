@@ -1,6 +1,6 @@
 runtime: python37
 
-instance_class: F2
+instance_class: F4
 
 env_variables:
   FN_BUCKET_RESOURCE: "time_services_resources"
@@ -8,3 +8,5 @@ env_variables:
   FN_PROJECT_ID: "quickstart-1574153168977"
   FN_USER_ROLE_PT: "projects\/.*\/?roles\/MyServicesAccess"
   UP_LOG_NAME: "my-test-log"
+  UP_QUEUE_NAME: "MyServQ"
+  FN_PROJECT_LOC: "europe-west2"
