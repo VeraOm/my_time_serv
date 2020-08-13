@@ -6,5 +6,9 @@ set FN_WEB_CONFIG_FILE=cs.json
 set FN_PROJECT_ID=quickstart-1574153168977
 set FN_USER_ROLE_PT=projects\/.*\/?roles\/MyServicesAccess
 set UP_LOG_NAME=my-test-log
+set UP_QUEUE_NAME=MyServQ
+set FN_PROJECT_LOC=europe-west2
+set REDISHOST=192.168.99.101
+set REDISPORT=6379
 
 python src\main.py

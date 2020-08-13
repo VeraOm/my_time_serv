@@ -40,7 +40,7 @@ def check_auth(func):
     
     def check_auth_impl(*args, **kwargs):
         if gauth.is_logged_in():
-            sResult =  func(*args, **kwargs)
+            sResult = func(*args, **kwargs)
         elif gauth.is_cron_request():
             logr.log_text(func(*args, **kwargs))
             sResult = "Everything Ok"
@@ -70,6 +70,27 @@ def hello():
 def do_email_forward():
     return ef.main()
     
+
+@app.route('/afgo/')
+@check_auth
+def task_email_forward():
+    
+    res = gqueue.create_task(body='{"mailfolder": "2Vera", "receiver": "veralmnva@gmail.com"}', uri=flask.url_for('gqueue.forward_next_email'))
+#    res = gqueue.create_task(body='{"mailfolder": "2Vera", "receiver": "yakov.yooy@yandex.ru"}', uri=flask.url_for('gqueue.forward_next_email'))
+    
+#    return res
+    return res.name
+
+
+@app.route('/beel/')
+@check_auth
+def bee_serv_check():
+    
+    res = gqueue.create_task(body=None, uri=flask.url_for('gqueue.view_bee_service'))
+    
+    return res.name
+    
+
 
 def show_info():
     sResult = str(flask.request.headers)

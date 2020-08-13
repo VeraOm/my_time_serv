@@ -1,0 +1,7 @@
+version: '3.7'
+services:
+  rds:
+    image: redis:alpine
+    ports:
+      - '6379:6379'
+      

@@ -10,3 +10,8 @@ env_variables:
   UP_LOG_NAME: "my-test-log"
   UP_QUEUE_NAME: "MyServQ"
   FN_PROJECT_LOC: "europe-west2"
+  REDISHOST: "10.197.164.203"
+  REDISPORT: "6379"
+
+vpc_access_connector:
+  name: "projects/quickstart-1574153168977/locations/europe-west2/connectors/my-services"

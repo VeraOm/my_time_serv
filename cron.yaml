@@ -1,10 +1,14 @@
 cron:
-- description: "run email forward in the morning"
-  url: /africa/
+- description: "email forward in the morning"
+  url: /afgo/
   schedule: every day 10:00
   timezone: Asia/Omsk
-- description: "run email forward in the evening"
-  url: /africa/
+- description: "beeline services analize"
+  url: /beel/
+  schedule: every day 13:00
+  timezone: Asia/Omsk
+- description: "email forward in the evening"
+  url: /afgo/
   schedule: every day 17:00
   timezone: Asia/Omsk
   
