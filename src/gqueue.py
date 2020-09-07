@@ -26,34 +26,43 @@ def is_task_request():
     return False
 
 
-def save_body_redis(key, value):
-    import redis
+def save_body_datastore(kind, body):
+    from google.cloud import datastore
     import uuid
         
-    REDISHOST = os.environ.get("REDISHOST", default=False)
-    REDISPORT = os.environ.get("REDISPORT", default=False)
+    result = str(uuid.uuid4())
+    dcli = datastore.Client(project=PROJECT_ID)
+    task_key = dcli.key(kind, result)
+    task = datastore.Entity(key=task_key, exclude_from_indexes=['body'])
+    task['body'] = body
+    dcli.put(task)
+    result = kind + ':' + result
     
-    result = key + ':' + str(uuid.uuid4())
-    with redis.StrictRedis(host=REDISHOST, port=REDISPORT) as rcash:
-        rcash.set(result, value, ex=3600)
+    dcli = None
     
-    logr.log_text("save into redis: {}".format(result))
+    logr.log_text("save into datastore: {}".format(result))
 
     return result
 
 
-def get_body_redis(key):
-    import redis
+def get_body_datastore(key):
+    from google.cloud import datastore
         
-    REDISHOST = os.environ.get("REDISHOST", default=False)
-    REDISPORT = os.environ.get("REDISPORT", default=False)
-    
     result = None
-    with redis.StrictRedis(host=REDISHOST, port=REDISPORT) as rcash:
-        result = rcash.get(key)
-
-    logr.log_text("get from redis: {}, length {}".format(key, len(result)))
+    kind, name = key.rpartition(':')[::2]
+    dcli = datastore.Client(project=PROJECT_ID)
+    task_key = dcli.key(kind, name)
+    task = dcli.get(task_key)
+    if task:
+        result = task.get('body')
+        
+    if result:
+        logr.log_text("get from datastore: {}, length {}".format(kind + ':' + name, len(result)))
+    else:
+        logr.log_text("get from datastore: {}, length {}".format(kind + ':' + name, 'None'))
     
+    dcli = None
+
     return result
 
 
@@ -61,20 +70,20 @@ def save_body(body, qtype):
     if len(body) < 99000:
         return body
         
-    return save_body_redis('#q:' + qtype, body)
+    return save_body_datastore('#q:' + qtype, body)
 
 
 def get_body(req):
     result = req.get_data(as_text=True)
     
     if result.startswith("#q:"):
-        return get_body_redis(result).decode()
+        return get_body_datastore(result)
         
     return result
 
     
 
-def create_task(body, uri, in_seconds=None):
+def add_task(body, uri, in_seconds=None):
 
     from google.cloud import tasks_v2
     from google.protobuf import timestamp_pb2
@@ -83,11 +92,13 @@ def create_task(body, uri, in_seconds=None):
 #    log_str = log_str + ", sec="
 #    log_str = log_str + (str(in_seconds) if in_seconds else "None")
 #    log_str = log_str + ", body: " + (body[:30] if body else "None") + "... "
-    logr.log_text("create_task: {}, sec={}, body: {}".format(uri, in_seconds, (body[:30] if body else "None")))
+    logr.log_text("add_task: {}, sec={}, body: {}".format(uri, in_seconds, (body[:30] if body else "None")))
 
     client = tasks_v2.CloudTasksClient()
     
     parent = client.queue_path(PROJECT_ID, PROJECT_LOCATION, CURRENT_QUEUE)
+
+#    logr.log_text("add_task: parent = {} is {}".format(parent, type(parent).__name__))
 
     task = {'app_engine_http_request': {  
                 'http_method': 'POST',
@@ -98,7 +109,7 @@ def create_task(body, uri, in_seconds=None):
     if body:
         task['app_engine_http_request']['body'] = body.encode()
 
-    if in_seconds is not None:
+    if in_seconds:
         d = datetime.datetime.utcnow() + datetime.timedelta(seconds=in_seconds)
 
         timestamp = timestamp_pb2.Timestamp()
@@ -106,18 +117,23 @@ def create_task(body, uri, in_seconds=None):
 
         task['schedule_time'] = timestamp
 
-    response = client.create_task(parent, task)
-    logr.log_text("create_task: response={}...".format(str(response)[:50]))
+#    logr.log_text("add_task: task is {}".format(type(task).__name__))
+#    logr.log_text("add_task: task = <{}>".format(str(task)))
+#    logr.log_text("add_task: client is {}".format(type(client).__name__))
+
+    response = client.create_task(parent=parent, task=task)
+#    logr.log_text("add_task: response is {}".format(type(response).__name__))
+    logr.log_text("add_task: response={}...".format(str(response)[:50]))
 
     return response
     
 
-def create_task_dbg(body, uri, in_seconds=None):
+def add_task_dbg(body, uri, in_seconds=None):
 
     from google.cloud import tasks_v2
     from google.protobuf import timestamp_pb2
 
-    log_str = "create_task: " + uri
+    log_str = "add_task: " + uri
     log_str = log_str + ", sec="
     log_str = log_str + (str(in_seconds) if in_seconds else "None")
     log_str = log_str + ", body: " + (body[:30] if body else "None") + "... "
@@ -144,9 +160,9 @@ def create_task_dbg(body, uri, in_seconds=None):
     with open(r"d:\Temp\task_" + uri.split('/')[-1] + ".txt", "wb") as fl:
         fl.write(task['app_engine_http_request']['body'])
         
-    logr.log_text("create_task: response=" + type(task['app_engine_http_request'].get('body')).__name__ + ", ")
+    logr.log_text("add_task: response=" + type(task['app_engine_http_request'].get('body')).__name__ + ", ")
 
-    return "create_task - Ok"
+    return "add_task - Ok"
     
 
 @app.route('/bee_services_check', methods=['POST'])
@@ -166,11 +182,11 @@ def view_bee_service():
         logr.log_text("get_setup_config error: {}".format(result[2]))
         
     if result[0]:
-        create_task(body=str(result[0]), uri=flask.url_for('gqueue.view_bee_service'), in_seconds=2)
+        add_task(body=str(result[0]), uri=flask.url_for('gqueue.view_bee_service'), in_seconds=2)
         
     if result[1] and len(result[1]) > 0:
         json_result = json.dumps(result[1])
-        create_task(body=json_result, uri=flask.url_for('gqueue.bee_services_read'))
+        add_task(body=json_result, uri=flask.url_for('gqueue.bee_services_read'))
         
     logr.log_text("view_bee_service: next setup id - {}, current setup - {}".format(result[0], result[1].get('title', 'none')))
     
@@ -193,7 +209,7 @@ def bee_services_read():
         logr.log_text("read_page error: {}".format(error))
         sResult = "Error"
     else:
-        create_task(body=json.dumps(services), uri=flask.url_for('gqueue.bee_analize_page'))
+        add_task(body=json.dumps(services), uri=flask.url_for('gqueue.bee_analize_page'))
         sResult = str(services.get("Id"))
     
     logr.log_text("bee_services_read: {}".format(sResult))
@@ -255,8 +271,8 @@ def forward_next_email():
     
     result = ef.create_forward_email(mails_check)
     if result[0] and not result[0].startswith("No messages") and not result[0].startswith("Error"):
-        create_task(body=save_body(result[0], "emlfwd"), uri=flask.url_for('gqueue.send_email_handler'))
-        create_task(body=mails_check_json, uri=flask.url_for('gqueue.forward_next_email'), in_seconds=5)
+        add_task(body=save_body(result[0], "emlfwd"), uri=flask.url_for('gqueue.send_email_handler'))
+        add_task(body=mails_check_json, uri=flask.url_for('gqueue.forward_next_email'), in_seconds=5)
         sResult = "Ok. Do next"
     else:
         sResult = "Ok. " + result[0]

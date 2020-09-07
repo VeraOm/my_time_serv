@@ -7,4 +7,4 @@ google_auth_oauthlib
 google-cloud-tasks
 googleapis-common-protos
 requests
-redis
+google-cloud-datastore

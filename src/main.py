@@ -75,8 +75,8 @@ def do_email_forward():
 @check_auth
 def task_email_forward():
     
-    res = gqueue.create_task(body='{"mailfolder": "2Vera", "receiver": "veralmnva@gmail.com"}', uri=flask.url_for('gqueue.forward_next_email'))
-#    res = gqueue.create_task(body='{"mailfolder": "2Vera", "receiver": "yakov.yooy@yandex.ru"}', uri=flask.url_for('gqueue.forward_next_email'))
+    res = gqueue.add_task(body='{"mailfolder": "2Vera", "receiver": "veralmnva@gmail.com"}', uri=flask.url_for('gqueue.forward_next_email'))
+#    res = gqueue.add_task(body='{"mailfolder": "2Vera", "receiver": "yakov.yooy@yandex.ru"}', uri=flask.url_for('gqueue.forward_next_email'))
     
 #    return res
     return res.name
@@ -86,7 +86,7 @@ def task_email_forward():
 @check_auth
 def bee_serv_check():
     
-    res = gqueue.create_task(body=None, uri=flask.url_for('gqueue.view_bee_service'))
+    res = gqueue.add_task(body=None, uri=flask.url_for('gqueue.view_bee_service'))
     
     return res.name
     
