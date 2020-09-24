@@ -27,10 +27,12 @@ import os
 
 import gauth
 import gqueue
+import web_mon
 
 app.secret_key = "wsxcvb"
 app.register_blueprint(gauth.app, url_prefix="/gauth")
 app.register_blueprint(gqueue.app, url_prefix="/q")
+app.register_blueprint(web_mon.app, url_prefix="/wm")
 
 CURRENT_LOG = os.environ.get("UP_LOG_NAME", default=False)
 logr = logging.Client().logger(CURRENT_LOG)
@@ -89,7 +91,16 @@ def bee_serv_check():
     res = gqueue.add_task(body=None, uri=flask.url_for('gqueue.view_bee_service'))
     
     return res.name
-    
+
+
+@app.route('/wmon/')
+@check_auth
+def run_web_mon():
+
+    res = gqueue.add_task(body=None, uri=flask.url_for('web_mon.run_mon'))
+
+    return res.name
+
 
 
 def show_info():

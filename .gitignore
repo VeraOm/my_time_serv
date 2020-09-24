@@ -1,5 +1,7 @@
 env/
 log/
 res/
+out/
 __pycache__/
 *.json
+.idea/

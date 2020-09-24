@@ -8,3 +8,5 @@ google-cloud-tasks
 googleapis-common-protos
 requests
 google-cloud-datastore
+jsonpath
+lxml
