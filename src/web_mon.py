@@ -17,6 +17,8 @@ KIND_WM_RESULT = "wm:result"
 CURRENT_LOG = os.environ.get("UP_LOG_NAME", default=False)
 PROJECT_ID = os.environ.get("FN_PROJECT_ID", default=False)
 
+MAX_SOURCES_BUNCH = 10
+
 # logging.basicConfig(handlers=[logging.FileHandler(u'd:\Temp\mylog.log', 'w', 'utf-8')],
 #                     format=u'%(levelname)-8s [%(asctime)s] %(message)s',
 #                     level=logging.DEBUG)  ###
@@ -80,8 +82,15 @@ def send_email_result():
 
 @app.route('/send_results', methods=['POST'])
 def send_results():
-    from google.cloud import datastore
     import gqueue
+
+    if gqueue.is_tasks_exist(except_of=flask.url_for('web_mon.send_results')):
+        gqueue.add_task(body=json.dumps({"go": True}),
+                        uri=flask.url_for('web_mon.send_results'),
+                        in_seconds=60)
+        return "Rerun later"
+
+    from google.cloud import datastore
 
     dcli = datastore.Client(project=gqueue.PROJECT_ID)
     query = dcli.query(kind=KIND_WM_RESULT, order=["send_to"])
@@ -92,6 +101,8 @@ def send_results():
 
     log_line("send_results: query {}".format(str(query)))
 
+    sender_count = 0
+
     for ent in query.fetch():
         recipient = ent.get("send_to").lower()
         if recipient != send_to:
@@ -99,7 +110,8 @@ def send_results():
                 msg["body"] = body
                 msg["keys"] = keys
                 gqueue.add_task(body=gqueue.save_body(json.dumps(msg), Q_SEND_MAIL),
-                                uri=flask.url_for('web_mon.send_email_result'))
+                                uri=flask.url_for('web_mon.send_email_result'), in_seconds=120 + sender_count * 5)
+                sender_count += 1
             body = ""
             msg = {"send_to": recipient}
             keys.clear()
@@ -112,7 +124,7 @@ def send_results():
         msg["body"] = body
         msg["keys"] = keys
         gqueue.add_task(body=gqueue.save_body(json.dumps(msg), Q_SEND_MAIL),
-                        uri=flask.url_for('web_mon.send_email_result'))
+                        uri=flask.url_for('web_mon.send_email_result'), in_seconds=120 + sender_count * 5)
 
     query = None
     dcli = None
@@ -125,9 +137,9 @@ def send_results():
 
 def get_body():
     import gqueue
-    # if GLOBAL_BODY.startswith("#q:"):
-    #     return gqueue.get_body_datastore(GLOBAL_BODY)
-    # return GLOBAL_BODY
+    # if GLOBAL_BODY.startswith("#q:"):                   ###
+    #     return gqueue.get_body_datastore(GLOBAL_BODY)   ###
+    # return GLOBAL_BODY                                  ###
     return gqueue.get_body(flask.request)
 
 
@@ -158,7 +170,8 @@ def read_page(data_part, source):
             log_line("read_page: page length is {}, chrset is {}".format(len(page), chset))
 
             gqueue.add_task(body=gqueue.save_body(json.dumps(result), Q_KEY_TYPE),
-                            uri=flask.url_for('web_mon.run_data_part'))
+                            uri=flask.url_for('web_mon.run_data_part')
+                            )
 
     return str(len(result))
 
@@ -182,6 +195,20 @@ def save_mon_result(body, recipient: str):
     log_line("save into datastore: {}".format(result))
 
     return result
+
+
+def get_pieces(pval):
+    match = re.search(r'([\d\s]*\d)\s*[\(\{\[]?\s*(шт)', pval, flags=re.IGNORECASE)
+    if match and len(match.groups()) == 2:
+        sval = re.sub(r"\s", "", match[1])
+        return int(sval)
+    else:
+        match = re.search(r'[\d\s]*\d', pval, flags=re.IGNORECASE)
+        if match:
+            sval = re.sub(r"\s", "", match[0])
+            return int(sval)
+
+    return None
 
 
 def get_float(pval):
@@ -255,12 +282,14 @@ def xsearch(page, data_source):
                             dict_val[k] = get_float(str(xres))
                         elif way_clean == "get_wgram":
                             dict_val[k] = get_wgram(str(xres))
+                        elif way_clean == "get_pieces":
+                            dict_val[k] = get_pieces(str(xres))
                     elif k == "price":
                         dict_val[k] = get_float(str(xres))
                     else:
                         dict_val[k] = str(xres).strip()
                 else:
-                    dict_val[k] = ""
+                    dict_val[k] = None
 
                 # log_line(str(k) + " Is " + str(dict_val[k]))  ###
 
@@ -330,7 +359,7 @@ def plain_json(page, data_source):
 
 
 def page_desc(data_part, page):
-    src = data_part.get("sources")
+    src = list(data_part.get("sources"))
     src_type = src[0].get("type")
     body = None
     links = None
@@ -342,8 +371,8 @@ def page_desc(data_part, page):
         body, links, errs = plain_json(page, src[0])
     elif src_type == 'xsearch_xp':
         import html as py_html
-        py_html.entities.html5["nbsp"]=' '
-        py_html.entities.html5["nbsp;"]=' '
+        py_html.entities.html5["nbsp"] = ' '
+        py_html.entities.html5["nbsp;"] = ' '
         body, links, errs = xsearch(py_html.unescape(page), src[0])
 
     if body:
@@ -352,7 +381,7 @@ def page_desc(data_part, page):
     if errs:
         for e in errs:
             log_line("page_desc error - {}".format(e))
-        return
+        return "has " + str(len(errs)) + " errors"
 
     log_line("page_desc: body - {}, links - {}, err - {}".format(body if body is None else len(body),
                                                                  links if links is None else len(links),
@@ -364,7 +393,7 @@ def page_desc(data_part, page):
 
     has_last = data_part.get("last")
     if len(src) > 1:
-        result["headers"] = data_part["headers"]
+        result["headers"] = data_part["headers"].copy()
         result["send_to"] = data_part["send_to"]
 
         if links:
@@ -377,32 +406,95 @@ def page_desc(data_part, page):
                 first_lnk = None
                 last_lnk = len(links)
 
+            links_list = []
+            import copy
             for lnk in links[:first_lnk]:
                 if not has_source:
-                    src[1]["source"] = lnk
-                result["sources"] = src[1:]
-                gqueue.add_task(body=gqueue.save_body(json.dumps(result), Q_KEY_TYPE),
-                                uri=flask.url_for('web_mon.run_data_part'))
+                    src[1]["source"] = str(lnk)
+                result["sources"] = list(src[1:])
+                # gqueue.add_task(body=gqueue.save_body(json.dumps(result), Q_KEY_TYPE),
+                #                 uri=flask.url_for('web_mon.run_data_part'))
+                links_list.append(copy.deepcopy(result))
 
             for lnk in links[last_lnk:None]:
                 if not has_source:
-                    src[1]["source"] = lnk
-                result["sources"] = src[1:]
+                    src[1]["source"] = str(lnk)
+                result["sources"] = list(src[1:])
                 result["last"] = True
-                gqueue.add_task(body=gqueue.save_body(json.dumps(result), Q_KEY_TYPE),
-                                uri=flask.url_for('web_mon.run_data_part'))
+                # gqueue.add_task(body=gqueue.save_body(json.dumps(result), Q_KEY_TYPE),
+                #                 uri=flask.url_for('web_mon.run_data_part'))
+                links_list.append(copy.deepcopy(result))
+
+            if len(links_list) == 1:
+                gqueue.add_task(body=gqueue.save_body(json.dumps(links_list[0]), Q_KEY_TYPE),
+                                uri=flask.url_for('web_mon.run_data_part')
+                                )
+            else:
+                gqueue.add_task(body=gqueue.save_body(json.dumps(links_list), Q_KEY_TYPE),
+                                uri=flask.url_for('web_mon.handling_sources_bunch')
+                                )
         else:
             result["sources"] = src[1:]
             if has_last:
                 result["last"] = True
             gqueue.add_task(body=gqueue.save_body(json.dumps(result), Q_KEY_TYPE),
-                            uri=flask.url_for('web_mon.run_data_part'))
+                            uri=flask.url_for('web_mon.run_data_part')
+                            )
     elif has_last:
         result["go"] = True
-        gqueue.add_task(body=gqueue.save_body(json.dumps(result), Q_KEY_TYPE),
-                        uri=flask.url_for('web_mon.send_results'))
+        gqueue.add_task(body=json.dumps(result),
+                        uri=flask.url_for('web_mon.send_results'),
+                        in_seconds=60)
 
     return str(len(result))
+
+
+@app.route('/srcs_handler', methods=['POST'])
+def handling_sources_bunch():
+    parts_json = get_body()
+    parts = json.loads(parts_json)
+    log_line("handling_sources_bunch: sources - {}".format(len(parts)))
+
+    import gqueue
+
+    parts_count = len(parts)  # Всего записей
+    if parts_count > MAX_SOURCES_BUNCH:
+        from math import ceil
+        bunches_count = ceil(parts_count / MAX_SOURCES_BUNCH)  # Количество пакетов для отправки
+        send_count = parts_count  # Отправляемое количество записей для обработки
+        if bunches_count > MAX_SOURCES_BUNCH:
+            bunches_count = MAX_SOURCES_BUNCH - 1  # Количество пакетов с записями для обработки
+            send_count = bunches_count * MAX_SOURCES_BUNCH
+        min_cnt = MAX_SOURCES_BUNCH - (send_count % MAX_SOURCES_BUNCH)  # Количество записей не хватающих до максимума
+        min_cnt = min_cnt if min_cnt < MAX_SOURCES_BUNCH else 0
+        max_recs = int(
+            min_cnt / bunches_count)  # На сколько записей нужно уменьшить в пакете с максимальным количеством записей
+        min_cnt = min_cnt % bunches_count  # Сколько записей нужно уменьшить в пакете до минимального количества
+        part_lens = [MAX_SOURCES_BUNCH - max_recs - 1 if ii < min_cnt else MAX_SOURCES_BUNCH - max_recs for ii in
+                     range(bunches_count)]
+        cur_part = 0
+        for cnt in part_lens:
+            links_list = parts[cur_part:cur_part + cnt]
+            cur_part+=cnt
+            gqueue.add_task(body=gqueue.save_body(json.dumps(links_list), Q_KEY_TYPE),
+                            uri=flask.url_for('web_mon.handling_sources_bunch')
+                            )
+        links_list = parts[cur_part:]
+        if links_list:
+            gqueue.add_task(body=gqueue.save_body(json.dumps(links_list), Q_KEY_TYPE),
+                            uri=flask.url_for('web_mon.handling_sources_bunch')
+                            )
+    else:
+        time_shift = 0
+        for src in parts:
+            gqueue.add_task(body=gqueue.save_body(json.dumps(src), Q_KEY_TYPE),
+                            uri=flask.url_for('web_mon.run_data_part'),
+                            in_seconds=int(time_shift / 5) * 2)
+            time_shift += 1
+
+        log_line("handling_sources_bunch: time shift {}".format(time_shift))
+
+    return "Ok"
 
 
 @app.route('/run_data_part', methods=['POST'])
@@ -474,16 +566,17 @@ def run_mon():
     return "Ok - " + str(len(mon_setup))
 
 # if __name__ == '__main__':
-#     read_setup()
+#    read_setup()
 # log_line("===============================================================")  ###
 
 # run_mon()
-# GLOBAL_BODY = None
-# with open(r"d:\Temp\t3181.txt", "rb") as fl:
-#     GLOBAL_BODY = fl.read().decode()
-# if GLOBAL_BODY:
-#     run_data_part()
+#     GLOBAL_BODY = None
+#     with open(r"d:\Temp\t30.txt", "rb") as fl:
+#         GLOBAL_BODY = fl.read().decode()
+#     if GLOBAL_BODY:
+#         run_data_part()
+# handling_sources_bunch()
 
-# send_results()
+#    send_results()
 
 # logging.shutdown()

@@ -55,7 +55,7 @@ def get_body_datastore(key):
     task = dcli.get(task_key)
     if task:
         result = task.get('body')
-        dcli.delete(task_key)
+        # dcli.delete(task_key)
 
     if result:
         logr.log_text("get from datastore: {}, length {}".format(kind + ':' + name, len(result)))
@@ -81,6 +81,25 @@ def get_body(req):
         return get_body_datastore(result)
 
     return result
+
+
+def is_tasks_exist(except_of) -> bool:
+    from google.cloud import tasks_v2
+
+    client = tasks_v2.CloudTasksClient()
+
+    qname = client.queue_path(PROJECT_ID, PROJECT_LOCATION, CURRENT_QUEUE)
+    tlist = client.list_tasks(parent=qname)
+    res: bool = False
+    for task in tlist:
+        if isinstance(task, tasks_v2.types.task.Task) and task.app_engine_http_request.relative_uri != except_of:
+            res = True
+            break
+
+    tlist = None
+    client = None
+
+    return res
 
 
 def add_task(body, uri, in_seconds=None):
